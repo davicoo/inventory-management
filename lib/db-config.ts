@@ -1,7 +1,7 @@
-import Database from "better-sqlite3"
-import fs from "fs"
-import path from "path"
-import { v4 as uuidv4 } from "uuid"
+import Database from 'better-sqlite3'
+import fs from 'fs'
+import path from 'path'
+import { v4 as uuidv4 } from 'uuid'
 
 const dbPath = path.join(process.cwd(), "inventory.db")
 
@@ -11,60 +11,120 @@ if (!fs.existsSync(dbPath)) {
   console.log("Created new database file")
 }
 
-let db: Database.Database
-
-try {
-  db = new Database(dbPath)
-  console.log("Database connection established successfully")
-} catch (error) {
-  console.error("Error connecting to database:", error)
-  throw new Error("Failed to connect to the database")
-}
+const db = new Database(dbPath)
 
 // Create the items table if it doesn't exist
-try {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS items (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      location TEXT NOT NULL,
-      description TEXT,
-      imageUrl TEXT,
-      sold BOOLEAN DEFAULT FALSE,
-      paymentReceived BOOLEAN DEFAULT FALSE,
-      code TEXT NOT NULL
-    )
-  `)
-  console.log("Items table created or already exists")
-} catch (error) {
-  console.error("Error creating items table:", error)
-  throw new Error("Failed to create items table")
-}
+db.exec(`
+  CREATE TABLE IF NOT EXISTS items (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    location TEXT NOT NULL,
+    description TEXT,
+    imageUrl TEXT,
+    sold INTEGER DEFAULT 0,
+    paymentReceived INTEGER DEFAULT 0,
+    code TEXT NOT NULL
+  )
+`)
 
-export function checkDatabaseHealth() {
+export function getAllItems() {
   try {
-    const result = db.prepare("SELECT 1").get()
-    return { status: "healthy", message: "Database connection successful" }
+    console.log('Getting all items from database')
+    const items = db.prepare('SELECT * FROM items').all()
+    console.log(`Retrieved ${items.length} items`)
+    return items
   } catch (error) {
-    console.error("Database health check failed:", error)
-    return { status: "unhealthy", message: "Database connection failed" }
+    console.error('Error getting all items:', error)
+    throw error
   }
 }
 
-export async function saveImage(file: File): Promise<string> {
+export function getItemById(id: string) {
   try {
-    const buffer = await file.arrayBuffer()
-    const fileName = `${uuidv4()}-${file.name}`
-    const filePath = path.join(process.cwd(), "public", "uploads", fileName)
-
-    await fs.promises.mkdir(path.dirname(filePath), { recursive: true })
-    await fs.promises.writeFile(filePath, Buffer.from(buffer))
-
-    console.log("Image saved successfully:", fileName)
-    return `/uploads/${fileName}`
+    console.log(`Getting item with id: ${id}`)
+    const item = db.prepare('SELECT * FROM items WHERE id = ?').get(id)
+    if (!item) {
+      console.log(`No item found with id: ${id}`)
+      return null
+    }
+    console.log('Retrieved item:', item)
+    return item
   } catch (error) {
-    console.error("Error saving image:", error)
-    throw new Error("Failed to save image")
+    console.error(`Error getting item with id ${id}:`, error)
+    throw error
+  }
+}
+
+export function createItem(item: {
+  name: string
+  location: string
+  description: string
+  imageUrl: string
+  code: string
+}) {
+  try {
+    console.log('Creating new item:', item)
+    const stmt = db.prepare(`
+      INSERT INTO items (id, name, location, description, imageUrl, sold, paymentReceived, code)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    
+    const id = uuidv4()
+    stmt.run(id, item.name, item.location, item.description, item.imageUrl, 0, 0, item.code)
+    const newItem = getItemById(id)
+    console.log('Created item:', newItem)
+    return newItem
+  } catch (error) {
+    console.error('Error creating item:', error)
+    throw error
+  }
+}
+
+export function updateItem(id: string, updates: { sold?: boolean; paymentReceived?: boolean }) {
+  try {
+    console.log(`Updating item ${id}:`, updates)
+    const stmt = db.prepare(`
+      UPDATE items 
+      SET sold = ?, paymentReceived = ?
+      WHERE id = ?
+    `)
+    
+    stmt.run(updates.sold ? 1 : 0, updates.paymentReceived ? 1 : 0, id)
+    const updatedItem = getItemById(id)
+    console.log('Updated item:', updatedItem)
+    return updatedItem
+  } catch (error) {
+    console.error(`Error updating item ${id}:`, error)
+    throw error
+  }
+}
+
+export function deleteItem(id: string) {
+  try {
+    console.log(`Deleting item with id: ${id}`)
+    const item = getItemById(id)
+    
+    if (!item) {
+      console.log(`No item found with id: ${id}`)
+      return null
+    }
+
+    const stmt = db.prepare('DELETE FROM items WHERE id = ?')
+    stmt.run(id)
+
+    // If the item had an image, delete it from the uploads directory
+    if (item.imageUrl) {
+      const imagePath = path.join(process.cwd(), 'public', item.imageUrl)
+      fs.unlink(imagePath).catch(err => 
+        console.error(`Failed to delete image file: ${imagePath}`, err)
+      )
+    }
+
+    console.log(`Successfully deleted item: ${id}`)
+    return item
+  } catch (error) {
+    console.error(`Error deleting item ${id}:`, error)
+    throw error
   }
 }
 
