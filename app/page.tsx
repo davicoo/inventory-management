@@ -1,5 +1,6 @@
 import { Suspense } from "react"
 import { Statistics } from "@/components/Statistics"
+import { BackupManager } from "@/components/BackupManager"
 import AddItemForm from "./components/AddItemForm"
 import { Skeleton } from "@/components/ui/skeleton"
 import { InventoryList } from "@/components/InventoryList"
@@ -11,7 +12,10 @@ export default function Home() {
       <div className="mb-8">
         <Statistics />
       </div>
-      <AddItemForm />
+      <div className="grid gap-8 md:grid-cols-2">
+        <AddItemForm />
+        <BackupManager />
+      </div>
       <div className="mt-8">
         <InventoryList />
       </div>

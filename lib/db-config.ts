@@ -2,6 +2,7 @@ import Database from "better-sqlite3"
 import { v4 as uuidv4 } from "uuid"
 import fs from "fs"
 import path from "path"
+import { promises as fsPromises } from 'fs'
 
 const dbPath = path.join(process.cwd(), "inventory.db")
 
@@ -29,7 +30,8 @@ db.exec(`
   )
 `)
 
-export function getAllItems() {
+// Database functions
+function getAllItems() {
   try {
     console.log('Getting all items from database')
     const items = db.prepare('SELECT * FROM items').all()
@@ -41,7 +43,7 @@ export function getAllItems() {
   }
 }
 
-export function getItemById(id: string) {
+function getItemById(id: string) {
   try {
     console.log(`Getting item with id: ${id}`)
     const item = db.prepare('SELECT * FROM items WHERE id = ?').get(id)
@@ -57,7 +59,7 @@ export function getItemById(id: string) {
   }
 }
 
-export function createItem(item: {
+function createItem(item: {
   name: string
   location: string
   description: string
@@ -93,7 +95,7 @@ export function createItem(item: {
   }
 }
 
-export function updateItem(id: string, updates: { sold?: boolean; paymentReceived?: boolean }) {
+function updateItem(id: string, updates: { sold?: boolean; paymentReceived?: boolean }) {
   try {
     console.log(`Updating item ${id}:`, updates)
     const stmt = db.prepare(`
@@ -112,7 +114,7 @@ export function updateItem(id: string, updates: { sold?: boolean; paymentReceive
   }
 }
 
-export function deleteItem(id: string) {
+function deleteItem(id: string) {
   try {
     console.log(`Attempting to delete item with id: ${id}`)
     
@@ -135,5 +137,99 @@ export function deleteItem(id: string) {
   }
 }
 
-export default db
+let lastBackupTime: string | null = null
+
+async function backupDatabase() {
+  const timestamp = new Date().toISOString().replace(/[:]/g, '-')
+  const backupPath = path.join(process.cwd(), 'backups', `inventory-${timestamp}.db`)
+  
+  try {
+    // Create backups directory if it doesn't exist
+    await fsPromises.mkdir(path.join(process.cwd(), 'backups'), { recursive: true })
+    
+    // Copy the database file
+    await fsPromises.copyFile(dbPath, backupPath)
+    lastBackupTime = new Date().toISOString()
+    return true
+  } catch (error) {
+    console.error('Backup failed:', error)
+    return false
+  }
+}
+
+function checkDatabaseHealth() {
+  try {
+    // Basic connection check
+    const result = db.prepare('SELECT 1 as health').get()
+    const writeTest = db.prepare('PRAGMA quick_check').get()
+    
+    // Enhanced statistics query
+    const enhancedStats = db.prepare(`
+      SELECT 
+        COUNT(*) as totalItems,
+        SUM(CASE WHEN sold = 1 THEN 1 ELSE 0 END) as soldItems,
+        SUM(CASE WHEN paymentReceived = 1 THEN 1 ELSE 0 END) as paidItems,
+        COUNT(DISTINCT location) as locations,
+        SUM(CASE WHEN price IS NOT NULL THEN price ELSE 0 END) as totalValue,
+        AVG(CASE WHEN price IS NOT NULL THEN price ELSE NULL END) as avgPrice,
+        COUNT(CASE WHEN created_at >= unixepoch('now', '-7 days') THEN 1 END) as newItemsLastWeek
+      FROM items
+    `).get()
+
+    // Get storage info
+    const storageInfo = {
+      dbSize: db.prepare('PRAGMA page_count').get(),
+      pageSize: db.prepare('PRAGMA page_size').get(),
+      freePages: db.prepare('PRAGMA freelist_count').get()
+    }
+
+    const sizeInBytes = (storageInfo.dbSize?.['page_count'] || 0) * (storageInfo.pageSize?.['page_size'] || 0)
+    
+    return {
+      status: 'healthy',
+      connection: true,
+      write_access: !!writeTest,
+      timestamp: new Date().toISOString(),
+      statistics: {
+        items: {
+          total: enhancedStats?.totalItems || 0,
+          sold: enhancedStats?.soldItems || 0,
+          paid: enhancedStats?.paidItems || 0,
+          addedLastWeek: enhancedStats?.newItemsLastWeek || 0,
+          totalValue: Number(enhancedStats?.totalValue || 0).toFixed(2),
+          averagePrice: Number(enhancedStats?.avgPrice || 0).toFixed(2)
+        },
+        locations: enhancedStats?.locations || 0,
+        database: {
+          size: `${(sizeInBytes / 1024).toFixed(2)} KB`,
+          freeSpace: `${((storageInfo.freePages?.['freelist_count'] || 0) * (storageInfo.pageSize?.['page_size'] || 0) / 1024).toFixed(2)} KB`,
+          tables: ['items'],
+          lastBackup: lastBackupTime,
+          needsBackup: !lastBackupTime || (Date.now() - new Date(lastBackupTime).getTime() > 24 * 60 * 60 * 1000)
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Database health check failed:', error)
+    return {
+      status: 'unhealthy',
+      connection: false,
+      error: error instanceof Error ? error.message : String(error),
+      timestamp: new Date().toISOString(),
+      statistics: null
+    }
+  }
+}
+
+// Single export statement for all functions and the database instance
+export {
+  getAllItems,
+  getItemById,
+  createItem,
+  updateItem,
+  deleteItem,
+  checkDatabaseHealth,
+  backupDatabase,
+  db as default
+}
 
