@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
-import { backupDatabase, validateBackup } from "@/lib/db-config"
+import { backupService } from "@/lib/backup-service"
 
 export async function POST() {
   try {
-    const result = await backupDatabase()
+    const result = await backupService.backupDatabase()
     
     if (result.success) {
       return NextResponse.json({ 
@@ -35,12 +35,13 @@ export async function POST() {
 
 export async function GET() {
   try {
-    const backups = await listBackups()
+    const backups = await backupService.listBackups()
     return NextResponse.json({ 
       status: 'success',
       backups
     })
   } catch (error) {
+    console.error('Error listing backups:', error)
     return NextResponse.json({ 
       status: 'error',
       message: 'Failed to list backups',

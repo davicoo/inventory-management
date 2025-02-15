@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "sonner"
+import { Loading } from "@/components/ui/loading"
+import { Trash2 } from "lucide-react"
 
 interface Backup {
   name: string
@@ -14,7 +16,8 @@ interface Backup {
 
 export function BackupManager() {
   const [backups, setBackups] = useState<Backup[]>([])
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isCreating, setIsCreating] = useState(false)
 
   const fetchBackups = async () => {
     try {
@@ -25,11 +28,13 @@ export function BackupManager() {
     } catch (error) {
       toast.error('Failed to fetch backups')
       console.error(error)
+    } finally {
+      setIsLoading(false)
     }
   }
 
   const createBackup = async () => {
-    setIsLoading(true)
+    setIsCreating(true)
     try {
       const response = await fetch('/api/backup', {
         method: 'POST'
@@ -46,13 +51,26 @@ export function BackupManager() {
       toast.error('Failed to create backup')
       console.error(error)
     } finally {
-      setIsLoading(false)
+      setIsCreating(false)
     }
   }
 
   useEffect(() => {
     fetchBackups()
   }, [])
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Database Backups</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Loading variant="card" height={200} count={3} />
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <Card>
@@ -63,20 +81,27 @@ export function BackupManager() {
         <div className="space-y-4">
           <Button 
             onClick={createBackup} 
-            disabled={isLoading}
+            disabled={isCreating}
           >
-            {isLoading ? 'Creating Backup...' : 'Create Backup'}
+            {isCreating ? (
+              <>
+                <Loading variant="inline" height={16} />
+                <span className="ml-2">Creating Backup...</span>
+              </>
+            ) : (
+              'Create Backup'
+            )}
           </Button>
 
           <div className="space-y-2">
             {backups.map((backup) => (
               <div 
                 key={backup.path}
-                className="flex items-center justify-between p-2 border rounded"
+                className="flex items-center justify-between p-2 border rounded hover:bg-accent"
               >
                 <div>
                   <p className="font-medium">{backup.name}</p>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-muted-foreground">
                     Size: {(backup.size / 1024).toFixed(2)} KB • 
                     Created: {new Date(backup.created).toLocaleString()}
                   </p>
@@ -85,7 +110,9 @@ export function BackupManager() {
             ))}
             
             {backups.length === 0 && (
-              <p className="text-center text-gray-500">No backups available</p>
+              <p className="text-center text-muted-foreground">
+                No backups available
+              </p>
             )}
           </div>
         </div>

@@ -39,3 +39,4 @@ inventory.db
 # Uploaded images
 /public/uploads
 
+backups/*
