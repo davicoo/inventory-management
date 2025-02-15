@@ -101,26 +101,20 @@ export function updateItem(id: string, updates: { sold?: boolean; paymentReceive
 
 export function deleteItem(id: string) {
   try {
-    console.log(`Deleting item with id: ${id}`)
-    const item = getItemById(id)
+    console.log(`Attempting to delete item with id: ${id}`)
     
+    // First check if item exists
+    const item = getItemById(id)
     if (!item) {
       console.log(`No item found with id: ${id}`)
       return null
     }
 
+    // Delete the item
     const stmt = db.prepare('DELETE FROM items WHERE id = ?')
     stmt.run(id)
-
-    // If the item had an image, delete it from the uploads directory
-    if (item.imageUrl) {
-      const imagePath = path.join(process.cwd(), 'public', item.imageUrl)
-      fs.unlink(imagePath).catch(err => 
-        console.error(`Failed to delete image file: ${imagePath}`, err)
-      )
-    }
-
-    console.log(`Successfully deleted item: ${id}`)
+    
+    console.log(`Successfully deleted item with id: ${id}`)
     return item
   } catch (error) {
     console.error(`Error deleting item ${id}:`, error)

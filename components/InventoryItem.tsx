@@ -1,6 +1,8 @@
-import { DeleteButton } from "./DeleteButton"
+'use client'
+
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
+import Image from "next/image"
 
 interface InventoryItemProps {
   item: {
@@ -11,6 +13,7 @@ interface InventoryItemProps {
     code: string
     sold: boolean
     paymentReceived: boolean
+    imageUrl?: string
   }
   onUpdate: (id: string, updates: { sold?: boolean; paymentReceived?: boolean }) => void
   onDelete: (id: string) => void
@@ -30,14 +33,16 @@ export function InventoryItem({ item, onUpdate, onDelete }: InventoryItemProps) 
         method: 'DELETE',
       })
 
+      const data = await response.json()
+
       if (!response.ok) {
-        throw new Error('Failed to delete item')
+        throw new Error(data.error || 'Failed to delete item')
       }
 
       onDelete(item.id)
     } catch (error) {
       console.error('Error deleting item:', error)
-      alert('Failed to delete item')
+      alert(error instanceof Error ? error.message : 'Failed to delete item')
     } finally {
       setIsDeleting(false)
     }
@@ -45,7 +50,19 @@ export function InventoryItem({ item, onUpdate, onDelete }: InventoryItemProps) 
 
   return (
     <div className="border p-4 rounded-lg shadow">
-      <h3 className="font-bold">{item.code}</h3>
+      {item.imageUrl && (
+        <div className="relative w-full h-48 mb-4">
+          <Image
+            src={item.imageUrl}
+            alt={`Image of ${item.name}`}
+            fill
+            className="object-cover rounded-md"
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+          />
+        </div>
+      )}
+      <h3 className="font-bold text-lg mb-2">{item.name}</h3>
+      <p className="text-sm text-gray-500 mb-2">Code: {item.code}</p>
       <p>Location: {item.location}</p>
       <p>Description: {item.description}</p>
       

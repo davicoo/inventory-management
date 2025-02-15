@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from "uuid"
 import db, { createItem, getAllItems, deleteItem } from "@/lib/db-config"
 import fs from "fs/promises"
 import path from "path"
+import { writeFile } from 'fs/promises'
+import { join } from 'path'
 
 // Add this new function
 export async function DELETE(request: Request) {
@@ -86,13 +88,13 @@ export async function POST(request: Request) {
         const buffer = Buffer.from(bytes)
         
         // Create uploads directory if it doesn't exist
-        const uploadDir = path.join(process.cwd(), "public", "uploads")
+        const uploadDir = join(process.cwd(), "public", "uploads")
         await fs.mkdir(uploadDir, { recursive: true })
         
         const fileName = `${Date.now()}-${image.name}`
-        const filePath = path.join(uploadDir, fileName)
+        const filePath = join(uploadDir, fileName)
         
-        await fs.writeFile(filePath, buffer)
+        await writeFile(filePath, buffer)
         imageUrl = `/uploads/${fileName}`
         
         console.log("POST /api/items: Image saved successfully:", imageUrl)

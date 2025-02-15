@@ -14,8 +14,8 @@ export default function AddItemForm() {
   const [description, setDescription] = useState("")
   const [image, setImage] = useState<File | null>(null)
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
 
     if (!name || !location) {
       toast({
@@ -44,16 +44,29 @@ export default function AddItemForm() {
     }
 
     try {
-      const newItem = await createItem(formData)
-      toast({
-        title: "Item added successfully",
-        description: `New item added with code: ${newItem.code}`,
+      const response = await fetch('/api/items', {
+        method: 'POST',
+        body: formData,
       })
-      setName("")
-      setLocation("")
-      setDescription("")
-      setImage(null)
+
+      if (response.ok) {
+        // Dispatch custom event after successful item addition
+        window.dispatchEvent(new Event('itemAdded'))
+        toast({
+          title: "Item added successfully",
+          description: `New item added with code: ${newItem.code}`,
+        })
+        // Reset form
+        event.target.reset()
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to add item",
+          variant: "destructive",
+        })
+      }
     } catch (error) {
+      console.error('Error adding item:', error)
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to add item. Please try again.",
