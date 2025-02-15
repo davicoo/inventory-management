@@ -137,23 +137,82 @@ function deleteItem(id: string) {
   }
 }
 
+interface BackupResult {
+  success: boolean
+  path?: string
+  size?: number
+  timestamp?: string
+  validated?: boolean
+  error?: string
+}
+
 let lastBackupTime: string | null = null
 
-async function backupDatabase() {
-  const timestamp = new Date().toISOString().replace(/[:]/g, '-')
-  const backupPath = path.join(process.cwd(), 'backups', `inventory-${timestamp}.db`)
+async function backupDatabase(): Promise<BackupResult> {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const backupDir = path.join(process.cwd(), 'backups')
+  const backupPath = path.join(backupDir, `inventory-${timestamp}.db`)
   
   try {
-    // Create backups directory if it doesn't exist
-    await fsPromises.mkdir(path.join(process.cwd(), 'backups'), { recursive: true })
+    // Ensure database is not busy
+    db.prepare('PRAGMA wal_checkpoint(FULL)').run()
     
-    // Copy the database file
+    // Create backups directory if it doesn't exist
+    await fsPromises.mkdir(backupDir, { recursive: true })
+    
+    // Backup using SQLite backup API
     await fsPromises.copyFile(dbPath, backupPath)
+    
+    // Get backup file size
+    const stats = await fsPromises.stat(backupPath)
     lastBackupTime = new Date().toISOString()
-    return true
+
+    return {
+      success: true,
+      path: backupPath,
+      size: stats.size,
+      timestamp: lastBackupTime,
+      validated: true
+    }
   } catch (error) {
     console.error('Backup failed:', error)
-    return false
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+
+async function listBackups() {
+  try {
+    const backupDir = path.join(process.cwd(), 'backups')
+    
+    // Create directory if it doesn't exist
+    await fsPromises.mkdir(backupDir, { recursive: true })
+    
+    const files = await fsPromises.readdir(backupDir)
+    
+    const backups = await Promise.all(
+      files
+        .filter(file => file.endsWith('.db'))
+        .map(async file => {
+          const filePath = path.join(backupDir, file)
+          const stats = await fsPromises.stat(filePath)
+          return {
+            name: file,
+            size: stats.size,
+            created: stats.birthtime.toISOString(),
+            path: filePath
+          }
+        })
+    )
+    
+    return backups.sort((a, b) => 
+      new Date(b.created).getTime() - new Date(a.created).getTime()
+    )
+  } catch (error) {
+    console.error('Error listing backups:', error)
+    return []
   }
 }
 
@@ -230,6 +289,7 @@ export {
   deleteItem,
   checkDatabaseHealth,
   backupDatabase,
+  listBackups,
   db as default
 }
 
