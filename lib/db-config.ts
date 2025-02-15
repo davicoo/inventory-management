@@ -23,7 +23,8 @@ db.exec(`
     imageUrl TEXT,
     sold INTEGER DEFAULT 0,
     paymentReceived INTEGER DEFAULT 0,
-    code TEXT NOT NULL
+    code TEXT NOT NULL,
+    price DECIMAL(10,2)
   )
 `)
 

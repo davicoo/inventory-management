@@ -11,36 +11,73 @@ export async function PATCH(
     
     console.log(`PATCH /api/items/${id}: Updating item with:`, updates)
 
-    const stmt = db.prepare(`
-      UPDATE items 
-      SET sold = ?, paymentReceived = ?
-      WHERE id = ?
-    `)
-
-    stmt.run(
-      updates.sold ? 1 : 0,
-      updates.paymentReceived ? 1 : 0,
-      id
-    )
-
-    const updatedItem = db.prepare('SELECT * FROM items WHERE id = ?').get(id)
-    
-    if (!updatedItem) {
+    // First check if item exists
+    const existingItem = db.prepare('SELECT * FROM items WHERE id = ?').get(id)
+    if (!existingItem) {
+      console.log(`No item found with id: ${id}`)
       return NextResponse.json(
         { error: "Item not found" },
         { status: 404 }
       )
     }
 
-    console.log(`PATCH /api/items/${id}: Successfully updated item:`, updatedItem)
+    // Prepare update query with only the fields that are present
+    const updateFields = []
+    const values = []
+    
+    if (updates.name !== undefined) {
+      updateFields.push('name = ?')
+      values.push(updates.name)
+    }
+    if (updates.location !== undefined) {
+      updateFields.push('location = ?')
+      values.push(updates.location)
+    }
+    if (updates.description !== undefined) {
+      updateFields.push('description = ?')
+      values.push(updates.description)
+    }
+    if (updates.price !== undefined) {
+      updateFields.push('price = ?')
+      values.push(updates.price)
+    }
+    if (updates.sold !== undefined) {
+      updateFields.push('sold = ?')
+      values.push(updates.sold ? 1 : 0)
+    }
+    if (updates.paymentReceived !== undefined) {
+      updateFields.push('paymentReceived = ?')
+      values.push(updates.paymentReceived ? 1 : 0)
+    }
+
+    // Add the id as the last parameter
+    values.push(id)
+
+    const updateQuery = `
+      UPDATE items 
+      SET ${updateFields.join(', ')}
+      WHERE id = ?
+    `
+
+    console.log('Executing update query:', updateQuery, 'with values:', values)
+
+    const stmt = db.prepare(updateQuery)
+    stmt.run(...values)
+
+    // Fetch and return the updated item
+    const updatedItem = db.prepare('SELECT * FROM items WHERE id = ?').get(id)
+    console.log(`Successfully updated item:`, updatedItem)
+    
     return NextResponse.json(updatedItem)
 
   } catch (error) {
-    console.error(`PATCH /api/items/${id}: Error updating item:`, error)
+    console.error(`Error updating item:`, error)
     return NextResponse.json(
-      { error: "Failed to update item" },
+      { 
+        error: "Failed to update item",
+        details: error instanceof Error ? error.message : String(error)
+      },
       { status: 500 }
     )
   }
 }
-
