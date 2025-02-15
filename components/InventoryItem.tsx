@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
 import Image from "next/image"
+import { toast } from "sonner"
 
 interface InventoryItemProps {
   item: {
@@ -20,7 +21,34 @@ interface InventoryItemProps {
 }
 
 export function InventoryItem({ item, onUpdate, onDelete }: InventoryItemProps) {
+  const [isUpdating, setIsUpdating] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  const handleUpdate = async (updates: { sold?: boolean; paymentReceived?: boolean }) => {
+    setIsUpdating(true)
+    try {
+      const response = await fetch(`/api/items/${item.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updates),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update item')
+      }
+
+      const updatedItem = await response.json()
+      onUpdate(item.id, updates)
+      toast.success('Item updated successfully')
+    } catch (error) {
+      console.error('Error updating item:', error)
+      toast.error('Failed to update item')
+    } finally {
+      setIsUpdating(false)
+    }
+  }
 
   const handleDelete = async () => {
     if (!confirm("Are you sure you want to delete this item?")) {
@@ -68,17 +96,19 @@ export function InventoryItem({ item, onUpdate, onDelete }: InventoryItemProps) 
       
       <div className="flex flex-col gap-2 mt-4">
         <Button
-          onClick={() => onUpdate(item.id, { sold: !item.sold })}
+          onClick={() => handleUpdate({ sold: !item.sold })}
           variant={item.sold ? "secondary" : "default"}
+          disabled={isUpdating}
         >
-          {item.sold ? "Mark as Unsold" : "Mark as Sold"}
+          {isUpdating ? "Updating..." : item.sold ? "Mark as Unsold" : "Mark as Sold"}
         </Button>
         
         <Button
-          onClick={() => onUpdate(item.id, { paymentReceived: !item.paymentReceived })}
+          onClick={() => handleUpdate({ paymentReceived: !item.paymentReceived })}
           variant={item.paymentReceived ? "secondary" : "default"}
+          disabled={isUpdating}
         >
-          {item.paymentReceived ? "Mark as Unpaid" : "Mark as Paid"}
+          {isUpdating ? "Updating..." : item.paymentReceived ? "Mark as Unpaid" : "Mark as Paid"}
         </Button>
         
         <Button 
