@@ -1,7 +1,7 @@
-import Database from 'better-sqlite3'
-import fs from 'fs'
-import path from 'path'
-import { v4 as uuidv4 } from 'uuid'
+import Database from "better-sqlite3"
+import { v4 as uuidv4 } from "uuid"
+import fs from "fs"
+import path from "path"
 
 const dbPath = path.join(process.cwd(), "inventory.db")
 
@@ -13,7 +13,7 @@ if (!fs.existsSync(dbPath)) {
 
 const db = new Database(dbPath)
 
-// Create the items table if it doesn't exist
+// Create the items table with proper schema
 db.exec(`
   CREATE TABLE IF NOT EXISTS items (
     id TEXT PRIMARY KEY,
@@ -24,7 +24,8 @@ db.exec(`
     sold INTEGER DEFAULT 0,
     paymentReceived INTEGER DEFAULT 0,
     code TEXT NOT NULL,
-    price DECIMAL(10,2)
+    price DECIMAL(10,2) DEFAULT NULL,
+    created_at INTEGER DEFAULT (unixepoch('now'))
   )
 `)
 
@@ -62,16 +63,27 @@ export function createItem(item: {
   description: string
   imageUrl: string
   code: string
+  price?: number
 }) {
   try {
     console.log('Creating new item:', item)
     const stmt = db.prepare(`
-      INSERT INTO items (id, name, location, description, imageUrl, sold, paymentReceived, code)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO items (id, name, location, description, imageUrl, sold, paymentReceived, code, price)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     
     const id = uuidv4()
-    stmt.run(id, item.name, item.location, item.description, item.imageUrl, 0, 0, item.code)
+    stmt.run(
+      id, 
+      item.name, 
+      item.location, 
+      item.description, 
+      item.imageUrl, 
+      0, 
+      0, 
+      item.code,
+      item.price || null
+    )
     const newItem = getItemById(id)
     console.log('Created item:', newItem)
     return newItem
