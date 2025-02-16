@@ -6,7 +6,6 @@ import path from "path"
 import { writeFile } from 'fs/promises'
 import { join } from 'path'
 
-// Add this new function
 export async function DELETE(request: Request) {
   try {
     console.log("DELETE /api/items: Received request")
@@ -60,70 +59,42 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  console.log('POST /api/items: Received request')
+  
   try {
-    console.log("POST /api/items: Received request")
-    const formData = await request.formData()
-    
-    // Log received data
-    console.log("POST /api/items: Form data received:", Object.fromEntries(formData))
-    
-    const name = formData.get("name") as string
-    const location = formData.get("location") as string
-    const description = formData.get("description") as string
-    const image = formData.get("image") as File | null
-    
-    if (!name || !location) {
-      console.error("POST /api/items: Missing required fields")
-      return NextResponse.json(
-        { error: "Name and location are required" },
-        { status: 400 }
-      )
+    const contentType = request.headers.get('content-type')
+    let data
+
+    if (contentType?.includes('multipart/form-data')) {
+      const formData = await request.formData()
+      data = Object.fromEntries(formData)
+    } else {
+      data = await request.json()
     }
 
-    let imageUrl = ""
-    if (image) {
-      try {
-        // Handle image upload here
-        const bytes = await image.arrayBuffer()
-        const buffer = Buffer.from(bytes)
-        
-        // Create uploads directory if it doesn't exist
-        const uploadDir = join(process.cwd(), "public", "uploads")
-        await fs.mkdir(uploadDir, { recursive: true })
-        
-        const fileName = `${Date.now()}-${image.name}`
-        const filePath = join(uploadDir, fileName)
-        
-        await writeFile(filePath, buffer)
-        imageUrl = `/uploads/${fileName}`
-        
-        console.log("POST /api/items: Image saved successfully:", imageUrl)
-      } catch (imageError) {
-        console.error("POST /api/items: Error saving image:", imageError)
-        return NextResponse.json(
-          { error: "Failed to save image", details: String(imageError) },
-          { status: 500 }
-        )
-      }
-    }
+    const id = uuidv4()
+    const { name, location, description, code, price, imageUrl } = data
 
-    const newItem = createItem({
-      name,
-      location,
-      description: description || "",
-      imageUrl,
-      code: Math.random().toString(36).substring(2, 8).toUpperCase(),
+    const stmt = db.prepare(`
+      INSERT INTO items (id, name, location, description, code, price, imageUrl)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    stmt.run(id, name, location, description, code, price, imageUrl)
+
+    return NextResponse.json({ 
+      status: 'success',
+      message: 'Item created successfully',
+      id 
     })
 
-    console.log("POST /api/items: Item created successfully:", newItem)
-    return NextResponse.json(newItem, { status: 201 })
-    
   } catch (error) {
-    console.error("POST /api/items: Error creating item:", error)
-    return NextResponse.json(
-      { error: "Failed to create item", details: String(error) },
-      { status: 500 }
-    )
+    console.error('POST /api/items: Error creating item:', error)
+    return NextResponse.json({ 
+      status: 'error',
+      message: 'Failed to create item',
+      error: error instanceof Error ? error.message : String(error)
+    }, { status: 500 })
   }
 }
 

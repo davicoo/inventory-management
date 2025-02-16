@@ -38,5 +38,7 @@ inventory.db
 
 # Uploaded images
 /public/uploads
+public/uploads/*
+!public/uploads/.gitkeep
 
 backups/*
