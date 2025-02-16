@@ -3,7 +3,7 @@ import { Statistics } from "@/components/Statistics"
 import { InventoryList } from "@/components/InventoryList"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Plus, Database } from "lucide-react"
+import { Plus, Database, ArrowRight } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 
 function StatisticsLoading() {
@@ -12,31 +12,24 @@ function StatisticsLoading() {
 
 export default function Home() {
   return (
-    <main className="container mx-auto p-4 space-y-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Inventory Management</h1>
-        <div className="flex gap-4">
-          <Button asChild>
-            <Link href="/add">
-              <Plus className="mr-2 h-4 w-4" />
-              Add Item
-            </Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/backups">
-              <Database className="mr-2 h-4 w-4" />
-              Backups
-            </Link>
-          </Button>
-        </div>
-      </div>
-      
-      <Suspense fallback={<StatisticsLoading />}>
-        <Statistics />
-      </Suspense>
-
-      <div className="mt-8">
-        <InventoryList />
+    <main className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-4">
+      <div className="max-w-3xl mx-auto text-center space-y-8">
+        <h1 className="text-6xl font-bold tracking-tight animate-fade-in">
+          Inventory Management
+        </h1>
+        <h2 className="text-2xl text-slate-300 animate-fade-in-delay">
+          Streamline your inventory tracking and management
+        </h2>
+        <Button 
+          asChild
+          size="lg" 
+          className="mt-8 animate-fade-in-delay-2"
+        >
+          <Link href="/dashboard">
+            Get Started
+            <ArrowRight className="ml-2 h-5 w-5" />
+          </Link>
+        </Button>
       </div>
     </main>
   )
