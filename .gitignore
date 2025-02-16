@@ -41,4 +41,6 @@ inventory.db
 public/uploads/*
 !public/uploads/.gitkeep
 
-backups/*
+# Backups
+/backups/*
+!backups/.gitkeep
