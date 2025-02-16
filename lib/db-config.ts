@@ -4,15 +4,34 @@ import fs from "fs"
 import path from "path"
 import { promises as fsPromises } from 'fs'
 
-const dbPath = path.join(process.cwd(), "inventory.db")
+let _db: Database.Database | null = null
+
+function initializeDb() {
+  if (!_db) {
+    try {
+      const dbPath = path.join(process.cwd(), 'inventory.db')
+      _db = new Database(dbPath, { verbose: console.log })
+      
+      // Enable foreign keys
+      _db.pragma('foreign_keys = ON')
+      
+      console.log('Database initialized successfully')
+      return _db
+    } catch (error) {
+      console.error('Failed to initialize database:', error)
+      throw error
+    }
+  }
+  return _db
+}
+
+export const db = initializeDb()
 
 // Ensure the database file exists
 if (!fs.existsSync(dbPath)) {
   fs.writeFileSync(dbPath, "")
   console.log("Created new database file")
 }
-
-const db = new Database(dbPath)
 
 // Create the items table with proper schema
 db.exec(`
@@ -216,66 +235,23 @@ async function listBackups() {
   }
 }
 
-function checkDatabaseHealth() {
+export function checkDatabaseHealth() {
   try {
-    // Basic connection check
-    const result = db.prepare('SELECT 1 as health').get()
-    const writeTest = db.prepare('PRAGMA quick_check').get()
-    
-    // Enhanced statistics query
-    const enhancedStats = db.prepare(`
-      SELECT 
-        COUNT(*) as totalItems,
-        SUM(CASE WHEN sold = 1 THEN 1 ELSE 0 END) as soldItems,
-        SUM(CASE WHEN paymentReceived = 1 THEN 1 ELSE 0 END) as paidItems,
-        COUNT(DISTINCT location) as locations,
-        SUM(CASE WHEN price IS NOT NULL THEN price ELSE 0 END) as totalValue,
-        AVG(CASE WHEN price IS NOT NULL THEN price ELSE NULL END) as avgPrice,
-        COUNT(CASE WHEN created_at >= unixepoch('now', '-7 days') THEN 1 END) as newItemsLastWeek
-      FROM items
-    `).get()
-
-    // Get storage info
-    const storageInfo = {
-      dbSize: db.prepare('PRAGMA page_count').get(),
-      pageSize: db.prepare('PRAGMA page_size').get(),
-      freePages: db.prepare('PRAGMA freelist_count').get()
-    }
-
-    const sizeInBytes = (storageInfo.dbSize?.['page_count'] || 0) * (storageInfo.pageSize?.['page_size'] || 0)
-    
+    const result = db.prepare('PRAGMA integrity_check').get()
     return {
-      status: 'healthy',
+      status: result.integrity_check === 'ok' ? 'healthy' : 'error',
       connection: true,
-      write_access: !!writeTest,
-      timestamp: new Date().toISOString(),
-      statistics: {
-        items: {
-          total: enhancedStats?.totalItems || 0,
-          sold: enhancedStats?.soldItems || 0,
-          paid: enhancedStats?.paidItems || 0,
-          addedLastWeek: enhancedStats?.newItemsLastWeek || 0,
-          totalValue: Number(enhancedStats?.totalValue || 0).toFixed(2),
-          averagePrice: Number(enhancedStats?.avgPrice || 0).toFixed(2)
-        },
-        locations: enhancedStats?.locations || 0,
-        database: {
-          size: `${(sizeInBytes / 1024).toFixed(2)} KB`,
-          freeSpace: `${((storageInfo.freePages?.['freelist_count'] || 0) * (storageInfo.pageSize?.['page_size'] || 0) / 1024).toFixed(2)} KB`,
-          tables: ['items'],
-          lastBackup: lastBackupTime,
-          needsBackup: !lastBackupTime || (Date.now() - new Date(lastBackupTime).getTime() > 24 * 60 * 60 * 1000)
-        }
-      }
+      write_access: true,
+      timestamp: new Date().toISOString()
     }
   } catch (error) {
     console.error('Database health check failed:', error)
     return {
-      status: 'unhealthy',
+      status: 'error',
       connection: false,
-      error: error instanceof Error ? error.message : String(error),
+      write_access: false,
       timestamp: new Date().toISOString(),
-      statistics: null
+      error: error instanceof Error ? error.message : String(error)
     }
   }
 }
@@ -287,7 +263,6 @@ export {
   createItem,
   updateItem,
   deleteItem,
-  checkDatabaseHealth,
   backupDatabase,
   listBackups,
   db as default

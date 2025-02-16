@@ -3,13 +3,6 @@ import path from 'path'
 import { promises as fsPromises } from 'fs'
 import { db } from './db-config'
 
-export interface BackupInfo {
-  name: string
-  size: number
-  created: string
-  path: string
-}
-
 export interface BackupResult {
   success: boolean
   path?: string
@@ -19,12 +12,36 @@ export interface BackupResult {
   error?: string
 }
 
+export interface BackupInfo {
+  name: string
+  size: number
+  created: string
+  path: string
+}
+
 export class BackupService {
   private backupDir: string
+  private dbPath: string
 
   constructor() {
     this.backupDir = path.join(process.cwd(), 'backups')
-    this.ensureBackupDir()
+    this.dbPath = path.join(process.cwd(), 'inventory.db')
+    this.initialize()
+  }
+
+  private initialize() {
+    try {
+      this.ensureBackupDir()
+      // Verify database connection
+      if (!db) {
+        throw new Error('Database not initialized')
+      }
+      // Test database connection
+      db.prepare('SELECT 1').get()
+    } catch (error) {
+      console.error('Backup service initialization failed:', error)
+      throw error
+    }
   }
 
   private ensureBackupDir() {
@@ -34,20 +51,29 @@ export class BackupService {
   }
 
   async backupDatabase(): Promise<BackupResult> {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const backupPath = path.join(this.backupDir, `inventory-${timestamp}.db`)
-    
     try {
-      // Ensure database is not busy
-      db.prepare('PRAGMA wal_checkpoint(FULL)').run()
-      
-      // Create backup using SQLite backup API
-      await fsPromises.copyFile(
-        path.join(process.cwd(), 'inventory.db'),
-        backupPath
-      )
-      
-      // Get backup file size
+      // Verify database connection
+      if (!db) {
+        throw new Error('Database not initialized')
+      }
+
+      // Ensure database exists
+      if (!fs.existsSync(this.dbPath)) {
+        throw new Error('Database file not found')
+      }
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      const backupPath = path.join(this.backupDir, `inventory-${timestamp}.db`)
+
+      // Checkpoint WAL
+      try {
+        db.prepare('PRAGMA wal_checkpoint(FULL)').run()
+      } catch (error) {
+        console.warn('WAL checkpoint warning:', error)
+      }
+
+      // Create backup
+      await fsPromises.copyFile(this.dbPath, backupPath)
       const stats = await fsPromises.stat(backupPath)
 
       return {

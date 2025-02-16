@@ -1,9 +1,17 @@
 import { NextResponse } from "next/server"
 import { backupService } from "@/lib/backup-service"
+import path from 'path'
+import fs from 'fs'
+
+console.log('Database path:', path.join(process.cwd(), 'inventory.db'))
+console.log('Database exists:', fs.existsSync(path.join(process.cwd(), 'inventory.db')))
 
 export async function POST() {
+  console.log('Backup request received')
+  
   try {
     const result = await backupService.backupDatabase()
+    console.log('Backup result:', result)
     
     if (result.success) {
       return NextResponse.json({ 
@@ -17,18 +25,19 @@ export async function POST() {
         }
       })
     } else {
+      console.error('Backup operation failed:', result.error)
       return NextResponse.json({ 
         status: 'error',
-        message: 'Failed to create backup',
-        details: result.error
+        message: result.error || 'Failed to create backup'
       }, { status: 500 })
     }
   } catch (error) {
-    console.error('Backup failed:', error)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    console.error('Unexpected error during backup:', errorMessage)
     return NextResponse.json({ 
       status: 'error',
-      message: 'Failed to create backup',
-      error: error instanceof Error ? error.message : String(error)
+      message: 'An unexpected error occurred',
+      error: errorMessage
     }, { status: 500 })
   }
 }
