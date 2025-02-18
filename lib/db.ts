@@ -1,44 +1,55 @@
 import Database from "better-sqlite3"
-import fs from "fs"
 import path from "path"
-import { v4 as uuidv4 } from "uuid"
 
-const dbPath = path.join(process.cwd(), "inventory.db")
+const DB_PATH = path.join(process.cwd(), "inventory.db")
 
-// Ensure the database file exists
-if (!fs.existsSync(dbPath)) {
-  fs.writeFileSync(dbPath, "")
-  console.log("Created new database file")
+function initializeDatabase() {
+  try {
+    console.log('Initializing database at:', DB_PATH)
+    
+    const db = new Database(DB_PATH, { 
+      verbose: process.env.NODE_ENV === 'development' ? console.log : undefined
+    })
+
+    // Enable foreign keys and WAL mode
+    db.pragma("foreign_keys = ON")
+    db.pragma("journal_mode = WAL")
+
+    // Test database connection
+    db.prepare('SELECT 1').get()
+    console.log('Database connection successful')
+
+    // Create items table with proper types
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS items (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        location TEXT NOT NULL,
+        description TEXT,
+        imageUrl TEXT,
+        sold INTEGER DEFAULT 0,
+        paymentReceived INTEGER DEFAULT 0,
+        code TEXT NOT NULL UNIQUE,
+        price DECIMAL(10,2),
+        created_at INTEGER DEFAULT (unixepoch('now'))
+      )
+    `)
+    console.log('Database schema initialized')
+
+    return db
+  } catch (error) {
+    console.error('Database initialization failed:', error)
+    throw error
+  }
 }
 
-let db: Database.Database
+let dbInstance: Database.Database | null = null
 
-try {
-  db = new Database(dbPath)
-  console.log("Database connection established successfully")
-} catch (error) {
-  console.error("Error connecting to database:", error)
-  throw new Error("Failed to connect to the database")
+export function getDb() {
+  if (!dbInstance) {
+    dbInstance = initializeDatabase()
+  }
+  return dbInstance
 }
 
-// Initialize database tables
-try {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS items (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      location TEXT NOT NULL,
-      description TEXT,
-      imageUrl TEXT,
-      sold BOOLEAN DEFAULT FALSE,
-      paymentReceived BOOLEAN DEFAULT FALSE,
-      code TEXT NOT NULL
-    )
-  `)
-  console.log("Database tables initialized successfully")
-} catch (error) {
-  console.error("Error initializing database tables:", error)
-  throw new Error("Failed to initialize database tables")
-}
-
-export default db
+export const db = getDb()

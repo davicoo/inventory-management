@@ -44,3 +44,7 @@ public/uploads/*
 # Backups
 /backups/*
 !backups/.gitkeep
+
+# Database
+*.db
+*.db-*

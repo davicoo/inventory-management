@@ -1,72 +1,62 @@
 'use client'
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { toast } from "sonner"
 
 interface StatsData {
   totalItems: number
   soldItems: number
-  totalSales: number | null
+  totalSales: number
   unpaidItems: number
   salesByMonth: Array<{
     month: string
-    sales: number
     items: number
+    sales: number
   }>
 }
 
+const defaultStats: StatsData = {
+  totalItems: 0,
+  soldItems: 0,
+  totalSales: 0,
+  unpaidItems: 0,
+  salesByMonth: []
+}
+
 export function Statistics() {
-  const [stats, setStats] = useState<StatsData | null>(null)
+  const [stats, setStats] = useState<StatsData>(defaultStats)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await fetch('/api/statistics')
+        if (!response.ok) throw new Error('Failed to fetch statistics')
+        
+        const result = await response.json()
+        if (result.status === 'success') {
+          setStats({
+            ...defaultStats,
+            ...result.data
+          })
+        } else {
+          throw new Error(result.message || 'Failed to fetch statistics')
+        }
+      } catch (error) {
+        console.error('Error fetching statistics:', error)
+        toast.error('Failed to load statistics')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
     fetchStats()
-    // Set up refresh interval
-    const interval = setInterval(fetchStats, 30000) // Refresh every 30 seconds
-    return () => clearInterval(interval)
   }, [])
 
-  const fetchStats = async () => {
-    try {
-      const response = await fetch('/api/statistics')
-      if (!response.ok) {
-        throw new Error('Failed to fetch statistics')
-      }
-      const data = await response.json()
-      setStats(data)
-    } catch (error) {
-      console.error('Error fetching statistics:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   if (isLoading) {
-    return (
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {[...Array(4)].map((_, i) => (
-          <Card key={i} className="animate-pulse">
-            <CardHeader className="space-y-0 pb-2">
-              <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-            </CardHeader>
-            <CardContent>
-              <div className="h-8 bg-gray-200 rounded"></div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    )
-  }
-
-  if (!stats) {
-    return (
-      <Card>
-        <CardContent className="py-4">
-          <p className="text-center text-gray-500">Failed to load statistics</p>
-        </CardContent>
-      </Card>
-    )
+    return <div className="animate-pulse">Loading statistics...</div>
   }
 
   return (
@@ -96,7 +86,7 @@ export function Statistics() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ${stats.totalSales?.toFixed(2) ?? '0.00'}
+              ${stats.totalSales.toFixed(2)}
             </div>
           </CardContent>
         </Card>

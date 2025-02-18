@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server"
 import { v4 as uuidv4 } from "uuid"
-import db, { createItem, getAllItems, deleteItem } from "@/lib/db-config"
+import db, { createItem, deleteItem, getAllItems } from "@/lib/db-config"
 import fs from "fs/promises"
 import path from "path"
 import { writeFile } from 'fs/promises'
 import { join } from 'path'
+import { getDb, statements } from "@/lib/db-config"
 
 export async function DELETE(request: Request) {
   try {
@@ -45,16 +46,28 @@ export async function DELETE(request: Request) {
 
 export async function GET() {
   try {
-    console.log("GET /api/items: Attempting to fetch items from database")
-    const items = getAllItems()
-    console.log(`GET /api/items: Successfully fetched ${items.length} items`)
-    return NextResponse.json(items)
+    const items = statements.getAllItems.all().map(item => ({
+      ...item,
+      sold: Boolean(item.sold),
+      paymentReceived: Boolean(item.paymentReceived),
+      price: item.price ? Number(item.price) : 0,
+      created_at: new Date(item.created_at * 1000).toISOString()
+    }))
+
+    return NextResponse.json({
+      status: 'success',
+      data: items
+    }, {
+      headers: {
+        'Cache-Control': 'private, no-cache, no-store, must-revalidate'
+      }
+    })
   } catch (error) {
-    console.error("GET /api/items: Error fetching items:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch items", details: String(error) }, 
-      { status: 500 }
-    )
+    console.error('GET /api/items error:', error)
+    return NextResponse.json({
+      status: 'error',
+      message: 'Failed to fetch items'
+    }, { status: 500 })
   }
 }
 

@@ -1,71 +1,77 @@
-import Database from "better-sqlite3"
+import Database from 'better-sqlite3'
 import { v4 as uuidv4 } from "uuid"
 import fs from "fs"
 import path from "path"
 import { promises as fsPromises } from 'fs'
 
-let _db: Database.Database | null = null
+const DB_PATH = path.join(process.cwd(), 'inventory.db')
 
-function initializeDb() {
-  if (!_db) {
-    try {
-      const dbPath = path.join(process.cwd(), 'inventory.db')
-      _db = new Database(dbPath, { verbose: console.log })
-      
-      // Enable foreign keys
-      _db.pragma('foreign_keys = ON')
-      
-      console.log('Database initialized successfully')
-      return _db
-    } catch (error) {
-      console.error('Failed to initialize database:', error)
-      throw error
-    }
+let db: Database.Database | null = null
+
+export function getDb() {
+  if (!db) {
+    db = new Database(DB_PATH, {
+      // Disable verbose logging in production
+      verbose: process.env.NODE_ENV === 'development' ? console.log : undefined,
+    })
+    
+    // Enable WAL mode for better performance
+    db.pragma('journal_mode = WAL')
+    db.pragma('synchronous = NORMAL')
+    db.pragma('cache_size = 1000')
+    db.pragma('temp_store = MEMORY')
   }
-  return _db
+  return db
 }
 
-export const db = initializeDb()
+// Prepare statements once for better performance
+const statements = {
+  getAllItems: getDb().prepare(`
+    SELECT 
+      id, name, location, description, imageUrl,
+      sold, paymentReceived, code, price,
+      created_at
+    FROM items 
+    ORDER BY created_at DESC
+  `),
+  
+  updateSold: getDb().prepare(
+    'UPDATE items SET sold = ? WHERE id = ? RETURNING *'
+  ),
+  
+  updatePayment: getDb().prepare(
+    'UPDATE items SET paymentReceived = ? WHERE id = ? RETURNING *'
+  ),
+  
+  getBackups: getDb().prepare(`
+    SELECT * FROM backups ORDER BY created_at DESC
+  `)
+}
+
+export { statements }
 
 // Ensure the database file exists
-if (!fs.existsSync(dbPath)) {
-  fs.writeFileSync(dbPath, "")
+if (!fs.existsSync(DB_PATH)) {
+  fs.writeFileSync(DB_PATH, "")
   console.log("Created new database file")
 }
 
-// Create the items table with proper schema
-db.exec(`
-  CREATE TABLE IF NOT EXISTS items (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    location TEXT NOT NULL,
-    description TEXT,
-    imageUrl TEXT,
-    sold INTEGER DEFAULT 0,
-    paymentReceived INTEGER DEFAULT 0,
-    code TEXT NOT NULL,
-    price DECIMAL(10,2) DEFAULT NULL,
-    created_at INTEGER DEFAULT (unixepoch('now'))
-  )
-`)
-
 // Database functions
 function getAllItems() {
-  try {
-    console.log('Getting all items from database')
-    const items = db.prepare('SELECT * FROM items').all()
-    console.log(`Retrieved ${items.length} items`)
-    return items
-  } catch (error) {
-    console.error('Error getting all items:', error)
-    throw error
-  }
+  const items = statements.getAllItems.all()
+  return items.map(item => ({
+    ...item,
+    sold: Boolean(item.sold),
+    paymentReceived: Boolean(item.paymentReceived),
+    price: item.price ? Number(item.price) : 0,
+    created_at: new Date(item.created_at * 1000).toISOString()
+  }))
 }
 
 function getItemById(id: string) {
   try {
     console.log(`Getting item with id: ${id}`)
-    const item = db.prepare('SELECT * FROM items WHERE id = ?').get(id)
+    const item = getDb().prepare('SELECT * FROM items WHERE id = ?').get(id)
     if (!item) {
       console.log(`No item found with id: ${id}`)
       return null
@@ -88,14 +94,13 @@ function createItem(item: {
 }) {
   try {
     console.log('Creating new item:', item)
-    const stmt = db.prepare(`
+    const stmt = getDb().prepare(`
       INSERT INTO items (id, name, location, description, imageUrl, sold, paymentReceived, code, price)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
-    
     const id = uuidv4()
     stmt.run(
-      id, 
+      id,
       item.name, 
       item.location, 
       item.description, 
@@ -117,13 +122,12 @@ function createItem(item: {
 function updateItem(id: string, updates: { sold?: boolean; paymentReceived?: boolean }) {
   try {
     console.log(`Updating item ${id}:`, updates)
-    const stmt = db.prepare(`
-      UPDATE items 
-      SET sold = ?, paymentReceived = ?
-      WHERE id = ?
-    `)
-    
-    stmt.run(updates.sold ? 1 : 0, updates.paymentReceived ? 1 : 0, id)
+    if (updates.sold !== undefined) {
+      statements.updateSold.run(updates.sold ? 1 : 0, id)
+    }
+    if (updates.paymentReceived !== undefined) {
+      statements.updatePayment.run(updates.paymentReceived ? 1 : 0, id)
+    }
     const updatedItem = getItemById(id)
     console.log('Updated item:', updatedItem)
     return updatedItem
@@ -145,9 +149,8 @@ function deleteItem(id: string) {
     }
 
     // Delete the item
-    const stmt = db.prepare('DELETE FROM items WHERE id = ?')
+    const stmt = getDb().prepare('DELETE FROM items WHERE id = ?')
     stmt.run(id)
-    
     console.log(`Successfully deleted item with id: ${id}`)
     return item
   } catch (error) {
@@ -171,16 +174,15 @@ async function backupDatabase(): Promise<BackupResult> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
   const backupDir = path.join(process.cwd(), 'backups')
   const backupPath = path.join(backupDir, `inventory-${timestamp}.db`)
-  
   try {
     // Ensure database is not busy
-    db.prepare('PRAGMA wal_checkpoint(FULL)').run()
+    getDb().prepare('PRAGMA wal_checkpoint(FULL)').run()
     
     // Create backups directory if it doesn't exist
     await fsPromises.mkdir(backupDir, { recursive: true })
     
     // Backup using SQLite backup API
-    await fsPromises.copyFile(dbPath, backupPath)
+    await fsPromises.copyFile(DB_PATH, backupPath)
     
     // Get backup file size
     const stats = await fsPromises.stat(backupPath)
@@ -237,7 +239,7 @@ async function listBackups() {
 
 export function checkDatabaseHealth() {
   try {
-    const result = db.prepare('PRAGMA integrity_check').get()
+    const result = getDb().prepare('PRAGMA integrity_check').get()
     return {
       status: result.integrity_check === 'ok' ? 'healthy' : 'error',
       connection: true,
@@ -252,6 +254,45 @@ export function checkDatabaseHealth() {
       write_access: false,
       timestamp: new Date().toISOString(),
       error: error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+
+export async function restoreBackup(backupFileName: string): Promise<{ success: boolean; message: string }> {
+  const backupPath = path.join(process.cwd(), 'backups', backupFileName)
+  const dbPath = path.join(process.cwd(), 'inventory.db')
+  try {
+    // Verify backup exists
+    if (!fs.existsSync(backupPath)) {
+      throw new Error('Backup file not found')
+    }
+
+    // Close current database connection
+    getDb().close()
+    
+    // Create backup of current database
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const currentBackupPath = path.join(process.cwd(), 'backups', `pre-restore-${timestamp}.db`)
+    
+    if (fs.existsSync(dbPath)) {
+      await fs.promises.copyFile(dbPath, currentBackupPath)
+    }
+    
+    // Restore from backup
+    await fs.promises.copyFile(backupPath, dbPath)
+
+    // Reinitialize database connection
+    const newDb = getDb()
+    Object.assign(db, newDb)
+    return {
+      success: true,
+      message: 'Database restored successfully'
+    }
+  } catch (error) {
+    console.error('Restore failed:', error)
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Failed to restore database'
     }
   }
 }
